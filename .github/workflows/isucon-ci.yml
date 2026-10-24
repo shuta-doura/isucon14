@@ -128,6 +128,7 @@ jobs:
             --instance-id "$INSTANCE_ID" --instance-os-user ubuntu \
             --ssh-public-key "file://${key_file}.pub" > /dev/null
           ssh "${ssh_options[@]}" "ubuntu@$PUBLIC_IP" 'sudo bash -se' <<'REMOTE' | tee "$RUNNER_TEMP/benchmark.log"
+          systemctl stop isuride-matcher
           systemctl stop isuride-go
           rm -rf /home/isucon/webapp/go /home/isucon/bench
           sudo -u isucon tar -xzf /tmp/pr-source.tar.gz -C /home/isucon
@@ -139,6 +140,17 @@ jobs:
           BUILD
           systemctl restart isuride-go
           systemctl is-active --quiet isuride-go
+          # The AMI's 2024 HTTPS certificate has expired. Matching is a local API.
+          mkdir -p /etc/systemd/system/isuride-matcher.service.d
+          cat > /etc/systemd/system/isuride-matcher.service.d/ci.conf <<'MATCHER'
+          [Service]
+          ExecStart=
+          ExecStart=/bin/sh -c "while true; do curl -fsS http://127.0.0.1:8080/api/internal/matching >/dev/null; sleep $ISUCON_MATCHING_INTERVAL; done"
+          MATCHER
+          systemctl daemon-reload
+          systemctl restart isuride-matcher
+          systemctl is-active --quiet isuride-matcher
+          curl -fsS http://127.0.0.1:8080/api/internal/matching > /dev/null
           cd /home/isucon/bench
           sudo -u isucon ./benchmark run \
             --target http://127.0.0.1:8080 \
