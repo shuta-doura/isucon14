@@ -7,4 +7,5 @@
     - apt
     - isucon-user
     - xbuild
-    - xbuildwebapp
+    - role: xbuildwebapp
+      when: not (go_only | default(false) | bool)

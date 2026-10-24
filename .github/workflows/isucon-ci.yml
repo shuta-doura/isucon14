@@ -1,0 +1,121 @@
+name: PR EC2 SSH
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  ssh:
+    # AWS credentials must never be handed to code from a fork.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      AWS_REGION: ap-northeast-1
+      AMI_ID: ${{ vars.EC2_AMI_ID }}
+      SUBNET_ID: ${{ vars.EC2_SUBNET_ID }}
+      PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+
+    steps:
+      - name: Check configuration
+        env:
+          ROLE_ARN: ${{ vars.AWS_EC2_ROLE_ARN }}
+        run: |
+          set -euo pipefail
+          for name in ROLE_ARN AMI_ID SUBNET_ID; do
+            if [ -z "${!name}" ]; then
+              echo "Missing GitHub Actions variable or secret: $name" >&2
+              exit 1
+            fi
+          done
+
+      - name: Check out the PR head commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PR_HEAD_SHA }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_EC2_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Create temporary SSH security group
+        id: security_group
+        run: |
+          set -euo pipefail
+          vpc_id=$(aws ec2 describe-subnets --subnet-ids "$SUBNET_ID" --query 'Subnets[0].VpcId' --output text)
+          group_id=$(aws ec2 create-security-group \
+            --group-name "pr-ssh-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --description "Temporary SSH access for GitHub Actions run ${GITHUB_RUN_ID}" \
+            --vpc-id "$vpc_id" --query GroupId --output text)
+          echo "id=$group_id" >> "$GITHUB_OUTPUT"
+          runner_ip=$(curl -4fsS https://checkip.amazonaws.com | tr -d '\n')
+          aws ec2 authorize-security-group-ingress \
+            --group-id "$group_id" --protocol tcp --port 22 --cidr "${runner_ip}/32"
+
+      - name: Start EC2
+        id: instance
+        env:
+          GROUP_ID: ${{ steps.security_group.outputs.id }}
+        run: |
+          set -euo pipefail
+          instance_id=$(aws ec2 run-instances \
+            --image-id "$AMI_ID" --instance-type c5.large \
+            --network-interfaces "DeviceIndex=0,SubnetId=${SUBNET_ID},Groups=${GROUP_ID},AssociatePublicIpAddress=true" \
+            --block-device-mappings '[{"DeviceName":"/dev/sda1","Ebs":{"DeleteOnTermination":true}}]' \
+            --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=isucon14-pr-${GITHUB_RUN_ID}}]" \
+            --query 'Instances[0].InstanceId' --output text)
+          echo "id=$instance_id" >> "$GITHUB_OUTPUT"
+          aws ec2 wait instance-status-ok --instance-ids "$instance_id"
+          public_ip=$(aws ec2 describe-instances --instance-ids "$instance_id" \
+            --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
+          if [ -z "$public_ip" ] || [ "$public_ip" = None ]; then
+            echo 'EC2 has no public IP address' >&2
+            exit 1
+          fi
+          echo "public_ip=$public_ip" >> "$GITHUB_OUTPUT"
+
+      - name: SSH into EC2
+        env:
+          INSTANCE_ID: ${{ steps.instance.outputs.id }}
+          PUBLIC_IP: ${{ steps.instance.outputs.public_ip }}
+        run: |
+          set -euo pipefail
+          key_file="$RUNNER_TEMP/ec2_key"
+          ssh-keygen -q -t ed25519 -N '' -f "$key_file"
+          for attempt in {1..12}; do
+            # EC2 Instance Connect accepts this public key for 60 seconds.
+            aws ec2-instance-connect send-ssh-public-key \
+              --instance-id "$INSTANCE_ID" --instance-os-user ubuntu \
+              --ssh-public-key "file://${key_file}.pub" > /dev/null
+            if ssh -i "$key_file" -o BatchMode=yes -o ConnectTimeout=10 \
+              -o StrictHostKeyChecking=accept-new \
+              -o UserKnownHostsFile="$RUNNER_TEMP/ec2_known_hosts" \
+              "ubuntu@$PUBLIC_IP" 'echo "SSH connected"; uname -a'; then
+              echo "PR head commit for a future benchmark: $PR_HEAD_SHA"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo 'SSH connection failed' >&2
+          exit 1
+
+      - name: Remove EC2 and security group
+        if: always()
+        env:
+          INSTANCE_ID: ${{ steps.instance.outputs.id }}
+          GROUP_ID: ${{ steps.security_group.outputs.id }}
+        run: |
+          set -euo pipefail
+          if [ -n "$INSTANCE_ID" ]; then
+            aws ec2 terminate-instances --instance-ids "$INSTANCE_ID"
+            aws ec2 wait instance-terminated --instance-ids "$INSTANCE_ID"
+          fi
+          if [ -n "$GROUP_ID" ]; then
+            aws ec2 delete-security-group --group-id "$GROUP_ID"
+          fi
