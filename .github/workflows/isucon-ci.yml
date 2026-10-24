@@ -105,6 +105,7 @@ jobs:
           exit 1
 
       - name: Transfer PR source and run benchmark on EC2
+        id: benchmark
         env:
           INSTANCE_ID: ${{ steps.instance.outputs.id }}
           PUBLIC_IP: ${{ steps.instance.outputs.public_ip }}
@@ -161,9 +162,26 @@ jobs:
           REMOTE
 
           # The benchmark can report pass=false without a nonzero process exit.
-          result=$(grep -F 'msg=結果 pass=true' "$RUNNER_TEMP/benchmark.log" | tail -n 1)
-          echo "PR head commit: $PR_HEAD_SHA" >> "$GITHUB_STEP_SUMMARY"
-          echo "$result" >> "$GITHUB_STEP_SUMMARY"
+          grep -Fq 'msg=結果 pass=true' "$RUNNER_TEMP/benchmark.log"
+
+      - name: Summarize benchmark
+        if: always()
+        env:
+          BENCHMARK_OUTCOME: ${{ steps.benchmark.outcome }}
+        run: |
+          set -euo pipefail
+          score='—'
+          if [ -f "$RUNNER_TEMP/benchmark.log" ]; then
+            found=$(sed -n 's/.*msg=結果 pass=[a-z]* スコア=\([0-9][0-9]*\).*/\1/p' \
+              "$RUNNER_TEMP/benchmark.log" | tail -n 1)
+            score="${found:-—}"
+          fi
+          if [ "$BENCHMARK_OUTCOME" = success ]; then
+            result=成功
+          else
+            result=失敗
+          fi
+          printf -- '- 結果: **%s**\n- スコア: **%s**\n' "$result" "$score" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove EC2 and security group
         if: always()
