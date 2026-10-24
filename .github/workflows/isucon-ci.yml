@@ -151,6 +151,8 @@ jobs:
           systemctl restart isuride-matcher
           systemctl is-active --quiet isuride-matcher
           curl -fsS http://127.0.0.1:8080/api/internal/matching > /dev/null
+          # The AMI's mock payment service uses port 12345; the benchmark owns it.
+          systemctl stop isuride-payment_mock
           cd /home/isucon/bench
           sudo -u isucon ./benchmark run \
             --target http://127.0.0.1:8080 \

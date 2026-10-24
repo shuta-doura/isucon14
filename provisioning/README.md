@@ -92,7 +92,7 @@ Go版ではベースAMIへのRust、Node.js、Perl、Ruby、PHP、Pythonのラ�
 
 ## PRごとのEC2ベンチマークCI
 
-[`.github/workflows/isucon-ci.yml`](../.github/workflows/isucon-ci.yml) は、同じリポジトリ内のPRを作成・更新した際にEC2を1台起動します。PR先頭コミットのGoアプリとベンチマーカーを転送してビルドし、同じEC2でベンチマークを60秒実行します。結果はActionsのログとジョブの概要に出ます。Goアプリへのアクセスと決済用模擬APIはlocalhostで完結します。AMI内のフロントエンドを使うため、静的ファイルの一致チェックは省略します。AMIのマッチングサービスが参照する2024年のHTTPS証明書は期限切れなので、CIではマッチング用内部APIをlocalhostのHTTPへ切り替えます。この構成では負荷生成も競技者EC2で動くため、スコアは専用ベンチマーカーを使う場合と比較できません。実行後は失敗時も含めてEC2と一時的なセキュリティグループを削除します。forkからのPRはAWS認証情報を扱わないため実行しません。SSH鍵はCI実行中に生成し、EC2 Instance Connectで一時的に公開鍵を登録するため、保存済みの秘密鍵は不要です。
+[`.github/workflows/isucon-ci.yml`](../.github/workflows/isucon-ci.yml) は、同じリポジトリ内のPRを作成・更新した際にEC2を1台起動します。PR先頭コミットのGoアプリとベンチマーカーを転送してビルドし、同じEC2でベンチマークを60秒実行します。結果はActionsのログとジョブの概要に出ます。Goアプリへのアクセスと決済用模擬APIはlocalhostで完結します。ベンチマーカーが12345番で決済APIを立てるため、AMI内のisuride-payment_mockは実行前に停止します。AMI内のフロントエンドを使うため、静的ファイルの一致チェックは省略します。AMIのマッチングサービスが参照する2024年のHTTPS証明書は期限切れなので、CIではマッチング用内部APIをlocalhostのHTTPへ切り替えます。この構成では負荷生成も競技者EC2で動くため、スコアは専用ベンチマーカーを使う場合と比較できません。実行後は失敗時も含めてEC2と一時的なセキュリティグループを削除します。forkからのPRはAWS認証情報を扱わないため実行しません。SSH鍵はCI実行中に生成し、EC2 Instance Connectで一時的に公開鍵を登録するため、保存済みの秘密鍵は不要です。
 
 GitHubリポジトリの **Settings → Secrets and variables → Actions** に以下を設定してください。
 
