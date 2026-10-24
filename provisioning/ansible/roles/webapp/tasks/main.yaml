@@ -56,18 +56,24 @@
 
 - name: Tasks for isuride-node
   include_tasks: node.yaml
+  when: not (go_only | default(false) | bool)
 
 - name: Tasks for isuride-perl
   include_tasks: perl.yaml
+  when: not (go_only | default(false) | bool)
 
 - name: Tasks for isuride-php
   include_tasks: php.yaml
+  when: not (go_only | default(false) | bool)
 
 - name: Tasks for isuride-python
   include_tasks: python.yaml
+  when: not (go_only | default(false) | bool)
 
 - name: Tasks for isuride-ruby
   include_tasks: ruby.yaml
+  when: not (go_only | default(false) | bool)
 
 - name: Tasks for isuride-rust
   include_tasks: rust.yaml
+  when: not (go_only | default(false) | bool)

@@ -33,58 +33,13 @@ ISUCON14で使用したTLS証明書は`provisioning/ansible/roles/nginx/files/et
 - ベンチマーカー VM 1台
   - ECS Fargate (8vCPU, 8GB Mem)
 
-## AWS上での過去問環境の構築方法
+## AWS上での過去問環境の構築
 
-### 用意されたAMIを利用する場合
-
-以下の設定で起動してください。このAMIは予告なく利用できなくなる可能性があります。
-- リージョン: `ap-northeast-1`
-- AMI-ID: `ami-0e334c50145a3ee41`
-
-### 自分でAMIをビルドする場合
-
-上記AMIが利用できなくなった場合は、`provisioning/packer`以下で`make build`を実行するとAMIをビルドできます。`hasicorp/packer`が必要です。(運営時に検証したバージョンはv1.11.2)
-上記スクリプトではAnsibleを利用して環境構築を行っています。デフォルトでは、初期状態に含まれるすべての言語環境をビルドするため、時間がかかります。下記の[Ansibleでの環境構築 - 対象言語の絞り込み](#)の項目も確認してください。
-
-### AMIからEC2を起動する場合の注意事項
-
-- 起動に必要なEBSのサイズは最低16GBですが、ベンチマーク中にログなどが増えると溢れる可能性があるため、大きめに設定することをお勧めします(競技環境では20GiB)
-- セキュリティグループは`TCP/443`、`TCP/22`を開放してください
-- 適切なインスタンスプロファイルを設定することで、セッションマネージャーによる接続が可能です
-- 起動時に指定したキーペアを使って`ubuntu`ユーザーでSSH接続することが可能です
-  - その後`sudo su - isucon`で`isucon`ユーザーに切り替えてください
+AMIの作成方法、Go版のビルド、EC2への接続方法、PR用CIの設定は[provisioningのREADME](./provisioning/README.md)を参照してください。PR用CIは[`.github/workflows/isucon-ci.yml`](./.github/workflows/isucon-ci.yml)にあります。
 
 ## Ansibleでの環境構築
 
-ubuntu 24.04 の環境に対して Ansible を実行することで環境構築が可能です。
-
-`make_latest_files.sh`ではフロントエンドおよび、ベンチマーカーのビルドが行われます。 Node.JSと、Go言語のランタイムが必要となることに注意してください。
-
-### 競技者環境の構築
-
-使用したいサーバーに本リポジトリを`git clone`して、以下のコマンドを実行してください。
-
-```sh
-$ cd provisioning/ansible
-$ ./make_latest_files.sh # 各種ビルド
-$ ansible-playbook -i inventory/localhost application.yml
-```
-
-### ベンチマーカー環境の構築
-
-使用したいサーバーに本リポジトリを`git clone`して、以下のコマンドを実行してください。
-
-```sh
-$ cd provisioning/ansible
-$ ./make_latest_files.sh # 各種ビルド
-$ ansible-playbook -i inventory/localhost benchmark.yml
-```
-
-### 対象言語の絞り込み
-
-デフォルトでは、初期状態に含まれるすべての言語環境をビルドするため、時間がかかります。
-
-`provisioning/ansible/roles/xbuildwebapp/tasks/main.yml`および`provisioning/ansible/roles/webapp/tasks/main.yaml`で必要の無い言語をコメントアウトすることで、ビルド時間を短縮することができます。
+Ubuntu 24.04への競技者・ベンチマーカー環境の構築手順は[provisioningのREADME](./provisioning/README.md#ansibleでの直接構築)を参照してください。
 
 ## docker compose での環境構築（Go/Perl言語のみ）
 

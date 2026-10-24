@@ -21,14 +21,20 @@ variable "revision" {
   default = "unknown"
 }
 
+variable "go_only" {
+  type    = bool
+  default = false
+}
+
 locals {
-  name = "isucon14_baseimage-${var.commit_hash}-${formatdate("YYYYMMDD-hhmm", timestamp())}"
+  name = "${var.go_only ? "isucon14_gobaseimage" : "isucon14_baseimage"}-${var.commit_hash}-${formatdate("YYYYMMDD-hhmm", timestamp())}"
   ami_tags = {
     Project  = "isucon14"
     Family   = "isucon14"
     Name     = "${local.name}"
     Revision = "${var.revision}"
     Packer   = "1"
+    Profile  = var.go_only ? "go" : "all"
   }
   run_tags = {
     Project = "isucon14"
@@ -68,8 +74,9 @@ source "amazon-ebs" "isucon14" {
   temporary_key_pair_type = "ed25519"
 
   launch_block_device_mappings {
-    volume_size = 8
-    device_name = "/dev/sda1"
+    volume_size           = 8
+    device_name           = "/dev/sda1"
+    delete_on_termination = true
   }
 }
 
@@ -77,9 +84,10 @@ build {
   sources = ["source.amazon-ebs.isucon14"]
 
   provisioner "ansible" {
-    playbook_file = "../../provisioning/ansible/application-base.yml"
-    host_alias = "application"
-    use_proxy = false
+    playbook_file   = "../../provisioning/ansible/application-base.yml"
+    host_alias      = "application"
+    use_proxy       = false
+    extra_arguments = ["--extra-vars", "go_only=${var.go_only}"]
   }
   provisioner "shell" {
     env = {
